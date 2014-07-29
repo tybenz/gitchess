@@ -37,7 +37,7 @@ Gitchess = {
                 if ( ( !head.user && Gitchess.myColor == 'black' ) || head.user == Gitwar.me ) {
                     return Gitchess.wait( true );
                 } else {
-                    return Gitchess.takeTurn( head );
+                    return Gitchess.takeTurn( head.user ? head : null );
                 }
             }
         });
@@ -50,7 +50,7 @@ Gitchess = {
         syntaxError: '\nMove not valid. Please try again.\n',
         userMissing: 'Your gitconfig username did not match any names in user.json. Game cannot start.',
         wrapUp: 'Wrapping up...',
-        check: 'CHECK!',
+        check: 'CHECK! '.red,
         capture: function( turn ) {
             return Gitwar.opponent.red + ' captured your ' + turn.capture + '!';
         },
@@ -191,6 +191,11 @@ Gitchess = {
         var secondStr = move.substring( 2, 4 );
         var first;
         var second;
+        var left;
+        var right;
+        var left2;
+        var right2;
+        var twoLeft2;
         var firstSide;
 
         // check for player color to see if flip
@@ -203,6 +208,9 @@ Gitchess = {
         var rank2 = flip ? Gitchess.flip[ secondStr.charAt( 1 ) ] : secondStr.charAt( 1 );
         secondStr = file2 + rank2;
 
+        var nextFile = { 'a': 'b', 'b': 'c', 'c': 'd', 'd': 'e', 'e': 'f', 'f': 'g', 'g': 'h' };
+        var prevFile = { 'b': 'a', 'c': 'b', 'd': 'c', 'e': 'd', 'f': 'e', 'g': 'f', 'h': 'g' };
+
         _.each( chessGame.getStatus().board.squares, function( square ) {
             if ( square.file == file && square.rank == rank ) {
                 first = square.piece ? square.piece.type : null;
@@ -211,18 +219,38 @@ Gitchess = {
             if ( square.file == file2 && square.rank == rank2 ) {
                 second = square.piece ? square.piece.type : null;
             }
+
+            // Values needed to detect castling
+            if ( nextFile[ file ] && square.file == nextFile[ file ] && square.rank == rank ) {
+                right = square.piece ? square.piece.type : null;
+            }
+            if ( prevFile[ file ] && square.file == prevFile[ file ] && square.rank == rank ) {
+                left = square.piece ? square.piece.type : null;
+            }
+            if ( nextFile[ file2 ] && square.file == nextFile[ file2 ] && square.rank == rank2 ) {
+                right2 = square.piece ? square.piece.type : null;
+            }
+            if ( prevFile[ file2 ] && square.file == prevFile[ file2 ] && square.rank == rank2 ) {
+                left2 = square.piece ? square.piece.type : null;
+            }
+            if ( prevFile[ prevFile[ file2 ] ] && square.file == prevFile[ prevFile[ file2 ] ] && square.rank == rank2 ) {
+                twoLeft2 = square.piece ? square.piece.type : null;
+            }
         });
 
-        var sameFile = false;
+        var modifier = '';
         if ( first ) {
             _.each( chessGame.getStatus().board.squares, function( square ) {
-                if ( square.piece && square.file == file && square.piece.type == first && firstSide == square.piece.side.name ) {
-                    sameFile = true;
+                if ( square.piece && square.rank != rank && square.file == file && square.piece.type == first && firstSide == square.piece.side.name ) {
+                    modifier = rank;
+                    return false;
+                }
+                if ( square.piece && square.file != file && square.rank == rank && square.piece.type == first && firstSide == square.piece.side.name ) {
+                    modifier = file;
                     return false;
                 }
             });
         }
-        var modifier = ''//sameFile ? rank : file;
 
         // check first exists
 
@@ -244,6 +272,15 @@ Gitchess = {
             moveStr += '=Q';
         }
 
+        // Detect castling alg notation is O-O (kingside) and O-O-O (queenside)
+        if ( first == 'king' && !right && right2 == 'rook' ) {
+            // Kingside
+            moveStr = 'O-O'
+        } else if ( first == 'king' && !left && !left2 && twoLeft2 == 'rook' ) {
+            // Queenside
+            moveStr = 'O-O-O'
+        }
+
         var obj = { capture: second };
 
         try {
@@ -259,11 +296,6 @@ Gitchess = {
         if ( lastTurn ) {
             Gitchess.move( lastTurn.move, Gitchess.myColor == 'black' );
             print( 'board' );
-
-            if ( chessGame.getStatus().isCheck ) {
-                // CHECK!
-                print( 'check' );
-            }
 
             if ( chessGame.getStatus().isCheckmate ) {
                 // CHECKMATE! You lose!
@@ -283,7 +315,13 @@ Gitchess = {
         };
 
         // prompt user for move
-        rl.question( ( lastTurn && lastTurn.capture ? Gitchess.script.capture( lastTurn ) + ' ' : '' ) + Gitchess.script.turn, function( moveStr ) {
+        rl.question( ( lastTurn && lastTurn.capture ?
+                      Gitchess.script.capture( lastTurn ) + ' ' :
+                      '' ) +
+                      ( chessGame.getStatus().isCheck ?
+                      Gitchess.script.check :
+                      '' ) +
+                      Gitchess.script.turn, function( moveStr ) {
             var turn = {
                 user: Gitwar.me,
                 move: moveStr
@@ -354,7 +392,7 @@ var print = function( message, arg ) {
     if ( message == 'board' ) {
         clear();
     }
-    if ( message == 'wait' ) {
+    if ( message == 'wait' || message == 'check' ) {
         process.stdout.write( scriptItem );
     } else {
         console.log( scriptItem );
