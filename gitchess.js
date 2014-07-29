@@ -6,46 +6,6 @@ var colors = require( 'colors' );
 
 var chessGame = chess.create();
 
-Object.defineProperty(String.prototype, 'opponentColor', {
-    get: function() {
-        if ( Gitchess.myColor == 'black' ) {
-            return this.red;
-        } else {
-            return this.cyan;
-        }
-    }
-});
-
-var print = function( message, arg ) {
-    var scriptItem = Gitchess.script[ message ];
-
-    if ( typeof scriptItem == 'function' ) {
-        scriptItem = scriptItem( arg );
-    }
-
-    if ( message == 'board' ) {
-        clear();
-    }
-    if ( message == 'wait' ) {
-        process.stdout.write( scriptItem );
-    } else {
-        console.log( scriptItem );
-    }
-};
-
-var clear = function() {
-    var lines = process.stdout.getWindowSize()[ 1 ];
-    for ( var i = 0; i < lines; i++ ) {
-        console.log( '\r\n' );
-    }
-};
-
-var boardHead = '    A    B    C    D    E    F    G    H\n' +
-    '  ┌────┬────┬────┬────┬────┬────┬────┬────┐\n';
-var boardTail = '\n  └────┴────┴────┴────┴────┴────┴────┴────┘\n' +
-    '    A    B    C    D    E    F    G    H\n';
-var boardLine = '\n  ├────┼────┼────┼────┼────┼────┼────┼────┤\n';
-
 var Gitchess = {};
 
 Gitchess = {
@@ -74,20 +34,20 @@ Gitchess = {
                 }
                 process.exit();
             } else {
-                if ( head.user == Gitwar.me ) {
-                    return Gitchess.wait();
+                if ( ( !head.user && Gitchess.myColor == 'black' ) || head.user == Gitwar.me ) {
+                    return Gitchess.wait( true );
                 } else {
-                    return Gitchess.takeTurn();
+                    return Gitchess.takeTurn( head );
                 }
             }
         });
     },
 
-    status: null,
-
+    // This is the "view" layer. User-facing text. Static strings and functions
+    // to build prompts/statements
     script: {
         turn: 'Your move: ',
-        syntaxError: '\nIncorrect syntax. Please try again.\n',
+        syntaxError: '\nMove not valid. Please try again.\n',
         userMissing: 'Your gitconfig username did not match any names in user.json. Game cannot start.',
         wrapUp: 'Wrapping up...',
         check: 'CHECK!',
@@ -95,7 +55,7 @@ Gitchess = {
             return Gitwar.opponent.red + ' captured your ' + turn.capture + '!';
         },
         wait: function() {
-            return ( Gitwar.opponent + '\'s' ).opponentColor + ' turn. Waiting...';
+            return ( Gitwar.opponent + '\'s' ).opponentColor() + ' turn. Waiting...';
         },
         youWin: function() {
             return ( 'CHECKMATE! You win!' ).green + ' Congratulations. Reset game or branch to play again.';
@@ -129,6 +89,7 @@ Gitchess = {
         }
     },
 
+    // Catches state up according to git logs
     setState: function() {
         return Gitwar.logs()
         .then( function( commits ) {
@@ -154,8 +115,13 @@ Gitchess = {
             })
 
             if ( commits.length < 2 ) {
-                Gitchess.myColor = 'white';
-                Gitchess.opponentColor = 'black';
+                if ( Gitwar.users[ 0 ] == Gitwar.me ) {
+                    Gitchess.myColor = 'white';
+                    Gitchess.opponentColor = 'black';
+                } else {
+                    Gitchess.myColor = 'black';
+                    Gitchess.opponentColor = 'white';
+                }
             }
         })
         .catch( function( err ) {
@@ -164,6 +130,7 @@ Gitchess = {
         });
     },
 
+    // Chess ASCII characters and alg notation lookup
     pieces: {
         pawn: '♟',
         bishop: '♝',
@@ -180,6 +147,8 @@ Gitchess = {
         }
     },
 
+    // Lookup for flipping moves (node-chess only thinks of the board with
+    // white on top)
     flip: {
         'a': 'h',
         'b': 'g',
@@ -199,15 +168,24 @@ Gitchess = {
         8: 1,
     },
 
-    wait: function() {
+    // proxy for Gitwar.poll
+    wait: function( first ) {
         print( 'wait' );
 
-        Gitwar.sync()
-        .then( function() {
-            return Gitwar.poll( Gitchess.takeTurn );
-        });
+        if ( first ) {
+            // If this is the very first step after init has been called we
+            // don't want to call sync, because the head check will be out of
+            // sync
+            Gitwar.poll( Gitchess.takeTurn );
+        } else {
+            Gitwar.sync()
+            .then( function() {
+                return Gitwar.poll( Gitchess.takeTurn );
+            });
+        }
     },
 
+    // Calculate alg notation for node-chess moves
     move: function( move, flip ) {
         var firstStr = move.substring( 0, 2 );
         var secondStr = move.substring( 2, 4 );
@@ -281,9 +259,6 @@ Gitchess = {
         if ( lastTurn ) {
             Gitchess.move( lastTurn.move, Gitchess.myColor == 'black' );
             print( 'board' );
-            if ( lastTurn.capture ) {
-                print( 'capture', lastTurn )
-            }
 
             if ( chessGame.getStatus().isCheck ) {
                 // CHECK!
@@ -302,8 +277,13 @@ Gitchess = {
             output: process.stdout
         });
 
+        rl._setPrompt = rl.setPrompt;
+        rl.setPrompt = function( prompt, length ) {
+            rl._setPrompt( prompt, length ? length : prompt.split( /[\r\n]/ ).pop().stripColors.length );
+        };
+
         // prompt user for move
-        rl.question( Gitchess.script.turn, function( moveStr ) {
+        rl.question( ( lastTurn && lastTurn.capture ? Gitchess.script.capture( lastTurn ) + ' ' : '' ) + Gitchess.script.turn, function( moveStr ) {
             var turn = {
                 user: Gitwar.me,
                 move: moveStr
@@ -312,6 +292,7 @@ Gitchess = {
             var response = Gitchess.move( moveStr, Gitchess.myColor == 'white' );
             if ( response.error ) {
                 print( 'syntaxError' );
+                rl.close();
                 Gitchess.takeTurn();
             } else {
                 if ( response.capture ) {
@@ -351,6 +332,51 @@ Gitchess = {
     }
 };
 
+// HELPERS
+
+// String method to output according to opponents color
+String.prototype.opponentColor = function() {
+    if ( Gitchess.myColor == 'black' ) {
+        return this.red;
+    } else {
+        return this.cyan;
+    }
+};
+
+// Print method to do user-facing logs
+var print = function( message, arg ) {
+    var scriptItem = Gitchess.script[ message ];
+
+    if ( typeof scriptItem == 'function' ) {
+        scriptItem = scriptItem( arg );
+    }
+
+    if ( message == 'board' ) {
+        clear();
+    }
+    if ( message == 'wait' ) {
+        process.stdout.write( scriptItem );
+    } else {
+        console.log( scriptItem );
+    }
+};
+
+// Clears screen between drawing chess baord
+var clear = function() {
+    var lines = process.stdout.getWindowSize()[ 1 ];
+    for ( var i = 0; i < lines; i++ ) {
+        console.log( '\r\n' );
+    }
+};
+
+// Head, tail and lines for chess board
+var boardHead = '    A    B    C    D    E    F    G    H\n' +
+    '  ┌────┬────┬────┬────┬────┬────┬────┬────┐\n';
+var boardTail = '\n  └────┴────┴────┴────┴────┴────┴────┴────┘\n' +
+    '    A    B    C    D    E    F    G    H\n';
+var boardLine = '\n  ├────┼────┼────┼────┼────┼────┼────┼────┤\n';
+
+// Start game
 Gitchess.init();
 
 module.exports = Gitchess;
