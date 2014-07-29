@@ -35,6 +35,9 @@ Gitchess = {
                 process.exit();
             } else {
                 if ( ( !head.user && Gitchess.myColor == 'black' ) || head.user == Gitwar.me ) {
+                    if ( chessGame.getStatus().isCheck ) {
+                        print( 'check' );
+                    }
                     return Gitchess.wait( true );
                 } else {
                     return Gitchess.takeTurn( head.user ? head : null );
@@ -94,7 +97,7 @@ Gitchess = {
         return Gitwar.logs()
         .then( function( commits ) {
             _.each( commits.reverse(), function( commit, i ) {
-                if ( i == 1 ) {
+                if ( i == 0 ) {
                     if ( commit.user == Gitwar.me ) {
                         Gitchess.myColor = 'white';
                         Gitchess.opponentColor = 'black';
@@ -106,7 +109,7 @@ Gitchess = {
 
                 if ( commit.move ) {
                     // make sure white moves first
-                    if ( i % 2 == 1 ) {
+                    if ( i % 2 == 0 ) {
                         Gitchess.move( commit.move, true )
                     } else {
                         Gitchess.move( commit.move )
@@ -114,7 +117,7 @@ Gitchess = {
                 }
             })
 
-            if ( commits.length < 2 ) {
+            if ( commits.length == 0 ) {
                 if ( Gitwar.users[ 0 ] == Gitwar.me ) {
                     Gitchess.myColor = 'white';
                     Gitchess.opponentColor = 'black';
@@ -245,7 +248,7 @@ Gitchess = {
                     modifier = rank;
                     return false;
                 }
-                if ( square.piece && square.file != file && square.rank == rank && square.piece.type == first && firstSide == square.piece.side.name ) {
+                if ( square.piece && square.file != file && square.rank == rank && square.piece.type == first && firstSide == square.piece.side.name && first != 'bishop' ) {
                     modifier = file;
                     return false;
                 }
