@@ -1,0 +1,30 @@
+{
+  "name": "gitchess",
+  "version": "0.1.0",
+  "description": "Head-to-head chess via git. Built on gitwar.",
+  "main": "gitchess.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tybenz/gitchess.git"
+  },
+  "keywords": [
+    "chess",
+    "game",
+    "gitwar"
+  ],
+  "author": "Tyler Benziger",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tybenz/gitchess/issues"
+  },
+  "homepage": "https://github.com/tybenz/gitchess",
+  "dependencies": {
+    "chess": "~0.2.1",
+    "gitwar": "~0.1.0",
+    "lodash-node": "~2.4.1",
+    "colors": "~0.6.2"
+  }
+}
